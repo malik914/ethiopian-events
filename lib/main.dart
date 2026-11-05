@@ -354,6 +354,75 @@ class GateEventsPage extends StatelessWidget {
   }
 }
 
+
+class ManualCheckInPage extends StatefulWidget {
+  const ManualCheckInPage({super.key, required this.eventId});
+  final String eventId;
+  @override
+  State<ManualCheckInPage> createState() => _ManualCheckInPageState();
+}
+class _ManualCheckInPageState extends State<ManualCheckInPage> {
+  String search = '';
+  final controller = TextEditingController();
+  final Set<String> pending = {};
+  @override
+  void dispose() { controller.dispose(); super.dispose(); }
+  Future<void> checkIn(String guestId) async {
+    setState(() => pending.add(guestId));
+    try {
+      final result = await FirebaseFunctions.instance.httpsCallable('checkInGuestManually').call({
+        'eventId': widget.eventId, 'guestId': guestId
+      });
+      if (!mounted) return;
+      final status = result.data['status'];
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        status == 'checked_in' ? 'Valid — checked in: ${result.data['guestName']}' : 'Already checked in'
+      )));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Check-in failed: $e')));
+    } finally { if (mounted) setState(() => pending.remove(guestId)); }
+  }
+  @override
+  Widget build(BuildContext context) {
+    final guests = FirebaseFirestore.instance.collection('events').doc(widget.eventId).collection('guests').orderBy('name');
+    return Scaffold(
+      appBar: AppBar(title: const Text('Manual guest check-in')),
+      body: Column(children: [
+        Padding(padding: const EdgeInsets.all(12), child: TextField(
+          controller: controller,
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Search name or phone', border: OutlineInputBorder()),
+          onChanged: (value) => setState(() => search = value.trim().toLowerCase()),
+        )),
+        Expanded(child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: guests.snapshots(),
+          builder: (context, snap) {
+            if (snap.hasError) return Center(child: Text('Guest lookup unavailable: ${snap.error}'));
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            final docs = snap.data!.docs.where((d) {
+              final data = d.data();
+              return (data['name'] ?? '').toString().toLowerCase().contains(search) ||
+                (data['phone'] ?? '').toString().toLowerCase().contains(search);
+            }).toList();
+            if (docs.isEmpty) return const Center(child: Text('No matching guests.'));
+            return ListView.builder(itemCount: docs.length, itemBuilder: (context, i) {
+              final doc = docs[i], data = doc.data();
+              final checked = data['checkedIn'] == true;
+              return ListTile(
+                title: Text(data['name'] ?? 'Guest'),
+                subtitle: Text(data['phone'] ?? data['email'] ?? ''),
+                trailing: checked ? const Chip(label: Text('Checked in')) : FilledButton(
+                  onPressed: pending.contains(doc.id) ? null : () => checkIn(doc.id),
+                  child: pending.contains(doc.id) ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator()) : const Text('Check in'),
+                ),
+              );
+            });
+          },
+        )),
+      ]),
+    );
+  }
+}
+
 class ScannerPage extends StatefulWidget {
   const ScannerPage({super.key, required this.eventId, required this.eventTitle});
   final String eventId, eventTitle;
@@ -387,7 +456,7 @@ class _ScannerPageState extends State<ScannerPage> {
     Expanded(child: MobileScanner(onDetect: (capture) { final value = capture.barcodes.firstOrNull?.rawValue; if (value != null) process(value); })),
     Container(width: double.infinity, padding: const EdgeInsets.all(20), color: Theme.of(context).colorScheme.surfaceContainer, child: Column(children: [
       Text(message, textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: resultColor)),
-      const SizedBox(height: 12), OutlinedButton.icon(onPressed: busy ? null : () => _manualLookup(context, widget.eventId, process), icon: const Icon(Icons.search), label: const Text('Manual ticket credential')),
+      const SizedBox(height: 12), OutlinedButton.icon(onPressed: busy ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => ManualCheckInPage(eventId: widget.eventId))), icon: const Icon(Icons.search), label: const Text('Find guest manually')),
     ])),
   ]));
 }
