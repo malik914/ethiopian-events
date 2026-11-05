@@ -1,0 +1,31 @@
+name: ethiopian_events
+description: Android-first event invitations and secure QR check-in for Ethiopia.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  firebase_core: ^3.8.1
+  firebase_auth: ^5.3.4
+  cloud_firestore: ^5.5.1
+  cloud_functions: ^5.1.5
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^6.0.2
+  crypto: ^3.0.6
+  share_plus: ^10.1.4
+  intl: ^0.20.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

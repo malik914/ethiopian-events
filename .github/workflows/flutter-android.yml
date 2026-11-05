@@ -1,0 +1,52 @@
+name: Flutter Android build
+
+on:
+  push:
+    branches:
+      - build/flutter-firebase-mvp
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check Firebase configuration
+        env:
+          FIREBASE_OPTIONS_DART: ${{ secrets.FIREBASE_OPTIONS_DART }}
+        run: |
+          if [ -z "$FIREBASE_OPTIONS_DART" ]; then
+            echo "::error::Missing FIREBASE_OPTIONS_DART repository secret. Generate lib/firebase_options.dart with FlutterFire CLI, then add its full contents as a GitHub Actions secret named FIREBASE_OPTIONS_DART."
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_OPTIONS_DART" > lib/firebase_options.dart
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ethiopian-events-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
