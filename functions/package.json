@@ -1,0 +1,12 @@
+{
+  "name": "ethiopian-events-functions",
+  "description": "Trusted ticket issuance and check-in endpoints",
+  "engines": { "node": "20" },
+  "main": "index.js",
+  "scripts": { "lint": "node --check index.js", "test": "node --test" },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.1"
+  },
+  "devDependencies": {}
+}
