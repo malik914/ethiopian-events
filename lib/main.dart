@@ -150,7 +150,9 @@ class OrganizerEventsPage extends StatelessWidget {
 }
 
 class CreateEventPage extends StatefulWidget {
-  const CreateEventPage({super.key});
+  const CreateEventPage({super.key, this.eventId, this.initialData});
+  final String? eventId;
+  final Map<String, dynamic>? initialData;
   @override
   State<CreateEventPage> createState() => _CreateEventPageState();
 }
@@ -159,6 +161,18 @@ class _CreateEventPageState extends State<CreateEventPage> {
   DateTime dateTime = DateTime.now().add(const Duration(days: 7));
   bool busy = false;
   @override
+  void initState() {
+    super.initState();
+    final d = widget.initialData;
+    if (d != null) {
+      title.text = d['title'] ?? '';
+      description.text = d['description'] ?? '';
+      venue.text = d['venue'] ?? '';
+      location.text = d['location'] ?? '';
+      if (d['dateTime'] is Timestamp) dateTime = (d['dateTime'] as Timestamp).toDate();
+    }
+  }
+  @override
   void dispose() { title.dispose(); description.dispose(); venue.dispose(); location.dispose(); super.dispose(); }
   Future<void> save() async {
     if (title.text.trim().isEmpty || venue.text.trim().isEmpty || location.text.trim().isEmpty || !dateTime.isAfter(DateTime.now())) {
@@ -166,18 +180,24 @@ class _CreateEventPageState extends State<CreateEventPage> {
     }
     setState(() => busy = true);
     try {
-      await FirebaseFirestore.instance.collection('events').add({
+      final eventData = {
         'title': title.text.trim(), 'description': description.text.trim(), 'venue': venue.text.trim(),
         'location': location.text.trim(), 'dateTime': Timestamp.fromDate(dateTime),
         'organizerUid': FirebaseAuth.instance.currentUser!.uid, 'attendanceCount': 0,
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+      if (widget.eventId == null) {
+        await FirebaseFirestore.instance.collection('events').add(eventData);
+      } else {
+        eventData.remove('createdAt');
+        await FirebaseFirestore.instance.collection('events').doc(widget.eventId).update(eventData);
+      }
       if (mounted) Navigator.pop(context);
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'))); }
     finally { if (mounted) setState(() => busy = false); }
   }
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Create event')), body: ListView(padding: const EdgeInsets.all(16), children: [
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(widget.eventId == null ? 'Create event' : 'Edit event')), body: ListView(padding: const EdgeInsets.all(16), children: [
     _field(title, 'Event title'), _field(description, 'Description', maxLines: 3), _field(venue, 'Venue name'), _field(location, 'Location / address'),
     ListTile(contentPadding: EdgeInsets.zero, title: const Text('Date and time'), subtitle: Text(DateFormat.yMMMMd().add_jm().format(dateTime)), trailing: const Icon(Icons.calendar_month), onTap: () async {
       final d = await showDatePicker(context: context, initialDate: dateTime, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 3650)));
@@ -185,7 +205,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
       final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(dateTime));
       if (t != null) setState(() => dateTime = DateTime(d.year, d.month, d.day, t.hour, t.minute));
     }),
-    const SizedBox(height: 12), FilledButton(onPressed: busy ? null : save, child: Text(busy ? 'Saving…' : 'Save event')),
+    const SizedBox(height: 12), FilledButton(onPressed: busy ? null : save, child: Text(busy ? 'Saving…' : (widget.eventId == null ? 'Save event' : 'Update event'))),
   ]));
 }
 
@@ -198,10 +218,14 @@ class EventDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final guests = FirebaseFirestore.instance.collection('events').doc(eventId).collection('guests');
-    return Scaffold(appBar: AppBar(title: Text(data['title'] ?? 'Event')), body: Column(children: [
+    return Scaffold(appBar: AppBar(title: Text(data['title'] ?? 'Event'), actions: [
+      IconButton(tooltip: 'Edit event', icon: const Icon(Icons.edit), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CreateEventPage(eventId: eventId, initialData: data)))),
+    ]), body: Column(children: [
       Card(margin: const EdgeInsets.all(12), child: ListTile(title: Text(data['venue'] ?? ''), subtitle: Text(data['location'] ?? ''), trailing: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Text('${data['attendanceCount'] ?? 0}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const Text('checked in')]))),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Row(children: [
         Expanded(child: Text('Guests', style: Theme.of(context).textTheme.titleLarge)),
+        OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AssignStaffPage(eventId: eventId))), icon: const Icon(Icons.badge), label: const Text('Staff')),
+        const SizedBox(width: 6),
         FilledButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddGuestPage(eventId: eventId, eventTitle: data['title'] ?? 'Event'))), icon: const Icon(Icons.person_add), label: const Text('Add guest')),
       ])),
       Expanded(child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(stream: guests.orderBy('createdAt', descending: true).snapshots(), builder: (context, snap) {
@@ -212,6 +236,46 @@ class EventDetailPage extends StatelessWidget {
       })),
     ]));
   }
+}
+
+
+class AssignStaffPage extends StatefulWidget {
+  const AssignStaffPage({super.key, required this.eventId});
+  final String eventId;
+  @override
+  State<AssignStaffPage> createState() => _AssignStaffPageState();
+}
+class _AssignStaffPageState extends State<AssignStaffPage> {
+  final uidController = TextEditingController();
+  bool busy = false;
+  @override
+  void dispose() { uidController.dispose(); super.dispose(); }
+  Future<void> assign() async {
+    if (uidController.text.trim().isEmpty) return;
+    setState(() => busy = true);
+    try {
+      await FirebaseFunctions.instance.httpsCallable('assignGateStaff').call({
+        'eventId': widget.eventId, 'staffUid': uidController.text.trim()
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gate staff assigned.')));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Assignment failed: $e')));
+    } finally { if (mounted) setState(() => busy = false); }
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Assign gate staff')),
+    body: Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Text('Enter the Firebase Authentication UID of an account already assigned the gateStaff role.'),
+      const SizedBox(height: 12),
+      TextField(controller: uidController, decoration: const InputDecoration(labelText: 'Gate staff UID', border: OutlineInputBorder())),
+      const SizedBox(height: 16),
+      FilledButton(onPressed: busy ? null : assign, child: Text(busy ? 'Assigning…' : 'Assign to event')),
+    ])),
+  );
 }
 
 class AddGuestPage extends StatefulWidget {
