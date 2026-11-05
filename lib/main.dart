@@ -6,6 +6,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart';
@@ -15,7 +16,7 @@ import 'package:share_plus/share_plus.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const EthiopianEventsApp());
 }
 
@@ -453,7 +454,7 @@ class _ScannerPageState extends State<ScannerPage> {
   }
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text('Scan • ${widget.eventTitle}')), body: Column(children: [
-    Expanded(child: MobileScanner(onDetect: (capture) { final value = capture.barcodes.firstOrNull?.rawValue; if (value != null) process(value); })),
+    Expanded(child: MobileScanner(onDetect: (capture) { final value = capture.barcodes.isEmpty ? null : capture.barcodes.first.rawValue; if (value != null) process(value); })),
     Container(width: double.infinity, padding: const EdgeInsets.all(20), color: Theme.of(context).colorScheme.surfaceContainer, child: Column(children: [
       Text(message, textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: resultColor)),
       const SizedBox(height: 12), OutlinedButton.icon(onPressed: busy ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => ManualCheckInPage(eventId: widget.eventId))), icon: const Icon(Icons.search), label: const Text('Find guest manually')),
