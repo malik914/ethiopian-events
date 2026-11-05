@@ -7,12 +7,13 @@ Android-first Flutter MVP for organizing weddings, cultural festivals, and commu
 This repository contains the initial Flutter/Firebase MVP implementation. Firebase credentials and platform configuration are intentionally not committed. The app is not production-ready until you configure Firebase, deploy rules/functions, assign roles, and test on real Android devices.
 
 - Email/password registration and sign-in use Firebase Authentication. Registration sends an email verification message; the MVP currently does not block sign-in on the verified flag.
+- Organizers can create, edit, and list events, invite guests, assign gate staff, and view guest/attendance status.
 - Roles are provisioned by an administrator in Firestore; users cannot grant themselves roles.
 - Ticket creation, staff assignment, and check-in are callable Cloud Functions. Raw credentials are generated securely in the app; only SHA-256 hashes are stored in Firestore.
-- Check-in is online-only. There is no offline queue.
+- Check-in is online-only. There is no offline queue. Gate staff can search the event guest list by name or phone as a manual fallback.
 - Guest ticket sharing currently shares QR payload text. A public deep-link landing page and automatic email/SMS delivery are not included.
 - Amharic locale is declared as an extension point; the initial UI strings are English.
-- The initial guest ticket QR is shown to the organizer immediately after creation. A future guest-facing redemption flow can use the `lookupTicket` callable.
+- The initial guest ticket QR is shown to the organizer immediately after creation. A guest-facing redemption page is not yet included.
 
 ## Prerequisites
 
@@ -85,7 +86,7 @@ Cloud Functions use the default deployment region. If you change it, configure t
    ```json
    { "role": "gateStaff" }
    ```
-6. The organizer can assign gate staff by invoking the `assignGateStaff` callable with `eventId` and `staffUid`. An organizer assignment screen is planned; until then use a trusted admin SDK script or Firebase Console callable test only after authenticating as the organizer. Never let clients write role documents directly.
+6. Open an event and tap **Staff**. Enter the gate staff user's Firebase Auth UID and assign them. The callable verifies the signed-in organizer owns the event and that the target account has `gateStaff` role. Never let clients write role documents directly.
 
 ## Data model
 
