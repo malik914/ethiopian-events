@@ -116,3 +116,34 @@ exports.lookupTicket = onCall(async (request) => {
     checkedIn: guest.get("checkedIn") === true,
   };
 });
+
+
+exports.checkInGuestManually = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { eventId, guestId } = request.data || {};
+  if (typeof eventId !== "string" || typeof guestId !== "string") {
+    throw new HttpsError("invalid-argument", "Event and guest are required.");
+  }
+  const eventRef = db.doc(`events/${eventId}`);
+  const event = await eventRef.get();
+  if (!event.exists) throw new HttpsError("not-found", "Event not found.");
+  const user = await db.doc(`users/${uid}`).get();
+  const isOwner = event.get("organizerUid") === uid && user.exists && user.get("role") === "organizer";
+  if (!isOwner && !(await eventRef.collection("staff").doc(uid).get()).exists) {
+    throw new HttpsError("permission-denied", "You are not assigned to this event.");
+  }
+  const guestRef = eventRef.collection("guests").doc(guestId);
+  return db.runTransaction(async (tx) => {
+    const guest = await tx.get(guestRef);
+    if (!guest.exists) throw new HttpsError("not-found", "Guest not found.");
+    if (guest.get("checkedIn") === true) return { status: "already_checked_in" };
+    tx.update(guestRef, {
+      checkedIn: true,
+      checkedInAt: FieldValue.serverTimestamp(),
+      checkedInBy: uid,
+      checkInMethod: "manual",
+    });
+    tx.update(eventRef, { attendanceCount: FieldValue.increment(1) });
+    return { status: "checked_in", guestName: guest.get("name") || "Guest" };
+  });
+});
